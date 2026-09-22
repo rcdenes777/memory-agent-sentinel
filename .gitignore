@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test results
+coverage/
+
+# Runtime
+*.log
+.cache/
+
+# Results (keep directory, exclude data)
+results/*.json
+results/*.html
+
+# Secrets
+*.key
+*.pem
+*.pub

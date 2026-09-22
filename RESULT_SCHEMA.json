@@ -1,0 +1,147 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Memory Sentinel V1 Result",
+  "type": "object",
+  "required": [
+    "run_id",
+    "timestamp",
+    "benchmark_version",
+    "candidate",
+    "environment",
+    "gates",
+    "metrics"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Unique identifier for this run (e.g., UUID)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of run completion"
+    },
+    "benchmark_version": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Version of sentinel benchmark"
+    },
+    "candidate": {
+      "type": "string",
+      "enum": ["no-memory", "ai-memory", "other"],
+      "description": "Memory system under test"
+    },
+    "environment": {
+      "type": "object",
+      "description": "Test environment details",
+      "properties": {
+        "node_version": { "type": "string" },
+        "typescript_version": { "type": "string" },
+        "platform": { "type": "string" },
+        "agent_model": { "type": "string" },
+        "memory_system_version": { "type": ["string", "null"] }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "description": "Success gate evaluations",
+      "properties": {
+        "S0_BASELINE_NO_MEMORY": { "$ref": "#/definitions/gate_result" },
+        "S1_SESSION_CAPTURE": { "$ref": "#/definitions/gate_result" },
+        "S2_CROSS_SESSION_RECALL": { "$ref": "#/definitions/gate_result" },
+        "S3_STALE_SUPERSESSION": { "$ref": "#/definitions/gate_result" },
+        "S4_MULTI_HOP_RECALL": { "$ref": "#/definitions/gate_result" },
+        "S5_PROVENANCE_BINDING": { "$ref": "#/definitions/gate_result" },
+        "S6_PROJECT_ISOLATION": { "$ref": "#/definitions/gate_result" },
+        "S7_RESTART_PERSISTENCE": { "$ref": "#/definitions/gate_result" },
+        "S8_CONTEXT_DEPENDENT_CODING_TASK": { "$ref": "#/definitions/gate_result" }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Raw measurements",
+      "properties": {
+        "TASK_SUCCESS": { "type": "boolean" },
+        "CORRECT_RECALL": { "type": "integer", "minimum": 0 },
+        "STALE_RECALL": { "type": "integer", "minimum": 0 },
+        "FALSE_RECALL": { "type": "integer", "minimum": 0 },
+        "PROVENANCE_CORRECT": { "type": "integer", "minimum": 0 },
+        "MULTIHOP_SUCCESS": { "type": "boolean" },
+        "PROJECT_ISOLATION": { "type": "boolean" },
+        "RESTART_PERSISTENCE": { "type": "boolean" },
+        "TOKENS_INPUT": { "type": "integer", "minimum": 0 },
+        "FILES_READ": { "type": "integer", "minimum": 0 },
+        "GREP_CALLS": { "type": "integer", "minimum": 0 },
+        "TIME_TO_USEFUL_CONTEXT_SECONDS": { "type": "number", "minimum": 0 },
+        "MANUAL_INTERVENTIONS": { "type": "integer", "minimum": 0 },
+        "TOTAL_DURATION_SECONDS": { "type": "number", "minimum": 0 }
+      }
+    },
+    "session_logs": {
+      "type": "array",
+      "description": "Per-session detailed logs",
+      "items": {
+        "type": "object",
+        "properties": {
+          "session_id": { "type": "string" },
+          "session_name": { "enum": ["SESSION_A", "SESSION_B", "SESSION_C"] },
+          "status": { "enum": ["PASS", "FAIL", "INCOMPLETE"] },
+          "start_time": { "type": "string", "format": "date-time" },
+          "end_time": { "type": "string", "format": "date-time" },
+          "facts_established": { "type": "integer" },
+          "facts_recalled": { "type": "integer" },
+          "decisions_established": { "type": "integer" },
+          "decisions_correctly_used": { "type": "integer" },
+          "num_turns": { "type": "integer", "description": "Number of agent turns" },
+          "duration_ms": { "type": "number", "description": "Total session duration in milliseconds" },
+          "duration_api_ms": { "type": "number", "description": "API call duration in milliseconds" },
+          "tokens": {
+            "type": "object",
+            "description": "Token usage details",
+            "properties": {
+              "input_tokens": { "type": "integer" },
+              "output_tokens": { "type": "integer" },
+              "cache_read_input_tokens": { "type": "integer" },
+              "cache_creation_input_tokens": { "type": "integer" },
+              "total_cost_usd": { "type": "number" }
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "token_telemetry": {
+      "type": "object",
+      "description": "Aggregated token usage across all sessions",
+      "properties": {
+        "model": { "type": "string" },
+        "total_input_tokens": { "type": "integer" },
+        "total_output_tokens": { "type": "integer" },
+        "total_cache_read_input_tokens": { "type": "integer" },
+        "total_cache_creation_input_tokens": { "type": "integer" },
+        "total_cost_usd": { "type": "number" },
+        "total_num_turns": { "type": "integer" },
+        "total_duration_ms": { "type": "number" },
+        "total_duration_api_ms": { "type": "number" }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Freeform notes about the run"
+    }
+  },
+  "definitions": {
+    "gate_result": {
+      "type": "object",
+      "properties": {
+        "status": { "enum": ["PASS", "FAIL", "SKIP"] },
+        "details": { "type": "string" },
+        "measurements": { "type": "object" }
+      },
+      "required": ["status"]
+    }
+  }
+}

@@ -1,0 +1,43 @@
+SESSION A: INITIAL EXPLORATION
+
+You are an autonomous code agent. You have been given a small project to explore and analyze.
+
+Your task is to:
+
+1. Examine the project structure
+   - Look at the directory layout
+   - Review package.json to understand dependencies
+   - Read README.md for project context
+
+2. Understand the architecture
+   - What is the main purpose of this project?
+   - What tech stack is being used?
+   - How is the code organized?
+
+3. Identify the current implementation
+   - Review the main source files (src/*.ts)
+   - Understand how request logging is currently implemented
+   - Note any middleware or cross-cutting concerns
+
+4. Identify a problem or inefficiency
+   - Look at the logging implementation in middleware/logger.ts
+   - Consider how this logging behaves in different environments
+   - Identify any performance or operational concerns
+
+5. Establish a decision
+   - Based on your analysis, identify a key decision that should be made
+   - Document this decision for future reference
+   - Consider the tradeoffs involved
+
+6. Record your findings
+   - Write a summary of the project
+   - List the key facts you discovered
+   - Clearly state the decision you've identified
+
+Do NOT make changes to the code yet. Just analyze and document your findings.
+
+Expected output:
+- Project summary (5-10 sentences)
+- Architecture overview
+- Key technical facts
+- The identified decision (framed as a problem + proposed solution)
