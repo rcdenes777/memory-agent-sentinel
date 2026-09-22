@@ -1,0 +1,30 @@
+{
+  "fixture": "project-sample",
+  "description": "Deterministic grading keys for project-sample. Facts are extracted from the agent's own SESSION output using the exact-phrase protocol defined in prompts/PROMPTS.md, never from a fixed external value, because the concrete decisions (e.g. rotation size) are chosen freely by the agent during the session and must be recalled verbatim later, not guessed by the harness.",
+  "min_facts_established": 3,
+  "forbidden_terms_if_leaked_from_other_fixture": [
+    "dbPoolMax",
+    "connection pool",
+    "ISOLATION-ISSUE-7",
+    "billing-worker"
+  ],
+  "own_terms_that_must_not_leak_elsewhere": [
+    "console logging",
+    "file-based logging",
+    "ISSUE-042",
+    "app.log",
+    "rotation"
+  ],
+  "required_output_tags": {
+    "session_a": ["DECISION_X", "FACTS_ESTABLISHED"],
+    "session_b": ["DECISION_Y", "SUPERSEDES", "ROTATION_SIZE_MB", "STALE_CONFIRMED"],
+    "session_c": [
+      "CURRENT_DECISION",
+      "ORIGINAL_PROBLEM_RESOLVED",
+      "USED_STALE_APPROACH",
+      "ROTATION_SIZE_MB",
+      "SUPERSEDED_DECISION_ACKNOWLEDGED",
+      "TASK_SUCCESS"
+    ]
+  }
+}

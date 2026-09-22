@@ -1,0 +1,20 @@
+{
+  "fixture": "project-isolation-b",
+  "description": "Deterministic grading keys for the S6_PROJECT_ISOLATION probe fixture.",
+  "forbidden_terms_if_leaked_from_other_fixture": [
+    "console logging",
+    "file-based logging",
+    "ISSUE-042",
+    "app.log",
+    "rotation"
+  ],
+  "own_terms_that_must_not_leak_elsewhere": [
+    "dbPoolMax",
+    "connection pool",
+    "ISOLATION-ISSUE-7",
+    "billing-worker"
+  ],
+  "required_output_tags": {
+    "probe": ["ISOLATION_PROBE_LEAK", "OBSERVED_DECISION_TOPIC"]
+  }
+}

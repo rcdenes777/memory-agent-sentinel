@@ -4,97 +4,89 @@ Deterministic, synthetic project fixtures for Memory Sentinel benchmarks.
 
 ## Fixture: project-sample
 
-A realistic Node.js + TypeScript microservice project.
-
-### Structure
+A small Node.js + TypeScript + Express service. It is not a single static
+tree — it evolves in three deterministic, harness-controlled stages so that
+every candidate sees byte-identical starting content for a given session,
+regardless of what an agent did in an earlier session.
 
 ```
-project-sample/
-├── src/
-│   ├── index.ts
-│   ├── config.ts
-│   ├── server.ts
-│   ├── services/
-│   │   ├── auth.ts
-│   │   └── users.ts
-│   └── middleware/
-│       └── logger.ts
-├── tests/
-│   ├── auth.test.ts
-│   └── users.test.ts
-├── package.json
-├── tsconfig.json
-├── .gitignore
-└── README.md
+fixtures/project-sample/
+├── base/                  Starting content for SESSION_A
+├── overlay-session-b/     Files added/changed on top of base/ before SESSION_B
+├── overlay-session-c/     Files added/changed on top of that before SESSION_C
+└── ANSWER_KEY.json        Deterministic grading keys (see runner/grading.ts)
 ```
 
-### Key Facts for Testing
+`runner/fixture-evolution.ts` applies these stages by copying `base/` into a
+fresh git repository, then overlaying `overlay-session-b/` and committing,
+then overlaying `overlay-session-c/` and committing. Each commit is
+independent of anything an agent wrote — see prompts/PROMPTS.md's
+verification rules (`git show`/`git diff`) for how to audit this by hand.
 
-**Architecture Facts:**
-- REST API with Express
-- TypeScript with strict mode
-- JWT authentication
-- SQLite database
-- Request logging middleware
+### Key Facts (discoverable directly from base/, no memory required)
 
-**Dependencies:**
-- express 4.18.x
-- typescript 5.1.x
-- jest for testing
-- sqlite3 for database
+- REST API with Express, TypeScript with strict mode, JWT authentication
+- Request logging middleware writes every request to `console.log`
+  (`src/middleware/logger.ts`) — this is the concern SESSION_A is expected to
+  identify
 
-**Known Issue (for SESSION_A):**
-- Current implementation logs all requests to console
-- Decision X: "Performance concern: logging to console in production"
+### What is NOT in any file (must come from session memory)
 
-**Update (for SESSION_B):**
-- Decision Y: "Switch to file-based logging with rotation"
-- Implement log level configuration
+These are the facts the benchmark actually measures recall of. They are
+established only in an agent's own session output (see the exact-phrase
+protocol in each `prompts/session-*.txt` and in `prompts/PROMPTS.md`) and are
+never written into any fixture file:
+
+- The specific rotation-size-in-MB decision made during SESSION_B
+  (`ROTATION_SIZE_MB`) — SESSION_C must recall the exact number SESSION_B
+  chose, not a value from a config file.
+- Whether the original SESSION_A problem has actually been resolved
+  (requires connecting the SESSION_A problem statement to the SESSION_B/C
+  code evolution — this is the multi-hop fact).
+
+### Deliberate stale-but-tempting trap
+
+`overlay-session-c/src/middleware/logger.ts` ships with a `TODO` comment
+suggesting a revert to `console.log` "for local debugging". A correct
+SESSION_C run does not act on it — see the `S3_STALE_SUPERSESSION` gate.
 
 ### Session Scenarios
 
-#### SESSION_A: Initial Exploration
-Agent should:
-1. Examine project structure
-2. Identify tech stack (Express, TypeScript, SQLite)
-3. Identify the performance concern (console logging)
-4. Establish Decision X: "Need to address console logging in production"
-5. Note current middleware implementation in src/middleware/logger.ts
+- **SESSION_A**: examine `base/`, identify the console-logging concern, state
+  `DECISION_X` and `FACTS_ESTABLISHED`.
+- **SESSION_B**: examine the harness-evolved tree (now includes
+  `ISSUES.md` describing a production symptom), implement file-based logging
+  with rotation, choose and justify a rotation size, state `DECISION_Y`,
+  `ROTATION_SIZE_MB`, and `STALE_CONFIRMED`.
+- **SESSION_C**: examine the harness-evolved tree (canonical Decision-Y
+  implementation, `ISSUES.md` marked resolved, decoy TODO present),
+  implement DEBUG-level + structured JSON logging, recall the rotation size,
+  and state the full required tag set (see `prompts/session-c.txt`).
 
-#### SESSION_B: Update and Evolution
-Agent should:
-1. Understand previous context about console logging issue
-2. Update to Decision Y: "Implement file-based logging"
-3. Add log level support in config.ts
-4. Update logger middleware to use file instead of console
-5. Verify Decision X (console logging) is no longer valid
+## Fixture: project-isolation-b
 
-#### SESSION_C: Synthesis
-Agent should:
-1. Answer: "What logging strategy is currently implemented?" → file-based (Y, not console X)
-2. Ask: "Why was logging changed?" → reference both A and B sessions
-3. Complete task: "Add DEBUG level logging and implement structured JSON logging"
-   - Must use file-based approach (Y)
-   - Must not revert to console logging (X)
-   - Should use correct logger initialization from config
+A second, independent fixture (`fixtures/project-isolation-b/base/`) used
+only for the `S6_PROJECT_ISOLATION` gate. It is a different small service
+(`billing-worker-service`) with a deliberately confusable-but-distinct
+reliability concern (database connection-pool exhaustion, not logging). See
+`fixtures/project-isolation-b/ANSWER_KEY.json` for the forbidden-term lists
+used to detect cross-project contamination in either direction.
 
 ## Determinism Guarantees
 
-All fixtures are generated with:
-- Hardcoded versions (no `^` or `~` semver)
-- Deterministic file timestamps
-- Fixed random seeds for generated content
-- No external API calls during fixture generation
+- Hardcoded dependency versions (no `^`/`~` semver ranges)
+- No native/compiled dependencies (kept out deliberately for reproducibility
+  across machines — e.g. `sqlite3` was removed even though it appears in the
+  fixture's own README as an unimplemented aspiration, precisely so that
+  fixture setup never depends on native module compilation succeeding)
+- No external API calls during fixture setup
+- All session-to-session evolution is a plain file overlay + git commit,
+  never dependent on random values or on what an agent produced
 
 ## Adding New Fixtures
 
-To add a fixture:
-
-1. Create directory: `fixtures/project-{name}/`
-2. Create fixture generator in Python (see `generate-fixture.py`)
-3. Document in FIXTURES.md
-4. Run generator: `python3 generate-fixture.py project-{name}`
-5. Commit generated files
-6. Update `runner/config.ts` to reference new fixture
-
-All fixtures must be binary-identical across runs (no randomness after initial generation).
+1. Create `fixtures/project-{name}/base/` (and, if the fixture needs
+   deterministic evolution, `overlay-session-b/` / `overlay-session-c/`)
+2. Add `fixtures/project-{name}/ANSWER_KEY.json`
+3. Document it here
+4. Register it in `runner/config.ts`

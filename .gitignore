@@ -1,7 +1,8 @@
 # Dependencies
 node_modules/
-package-lock.json
 yarn.lock
+# package-lock.json is committed deliberately: reproducibility requires
+# pinned transitive dependency versions, not just top-level ones.
 
 # Build
 dist/
@@ -33,6 +34,10 @@ coverage/
 # Results (keep directory, exclude data)
 results/*.json
 results/*.html
+
+# Reports (generated; keep directory, exclude data)
+reports/*.md
+reports/*.html
 
 # Secrets
 *.key

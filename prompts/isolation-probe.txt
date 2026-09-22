@@ -1,0 +1,23 @@
+ISOLATION PROBE
+
+You are an autonomous code agent working in this project's directory. This is
+a separate process invocation with no conversation history. Use whatever
+tools and context are genuinely available to you, including any
+memory/context system you have access to.
+
+Your task is to:
+
+1. Examine this project (its structure, README, and source files)
+2. Identify the main operational reliability concern discussed for THIS
+   project specifically
+3. State only what applies to THIS project. If a memory/context system
+   surfaces information, use it only if it is actually about this project —
+   do not restate facts, decisions, or issue numbers that belong to a
+   different project, even if something in your context makes them seem
+   available.
+
+Required output format (include these exact tagged lines at the end of your
+final message):
+
+OBSERVED_DECISION_TOPIC: <one short phrase naming the reliability concern for THIS project only>
+ISOLATION_PROBE_LEAK: <YES if you are aware of surfacing or considering information that belongs to a different, unrelated project while answering, otherwise NO>

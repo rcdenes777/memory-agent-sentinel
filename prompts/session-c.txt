@@ -1,46 +1,41 @@
 SESSION C: SYNTHESIS AND CODING
 
-You are an autonomous code agent. This is a new session with a fresh start.
+You are an autonomous code agent working in this project's directory. This is
+a separate process invocation from any earlier session — you have no
+conversation history with this session. Use whatever tools and context are
+genuinely available to you, including any memory/context system you have
+access to, to reconstruct what you need. Verify anything you are unsure of
+against the current files rather than guessing; do not treat a stray comment
+in the code as authoritative just because it is there — check whether it is
+still consistent with the current implementation and any decisions you can
+recall before acting on it.
 
-The project you're working with has undergone multiple iterations and improvements. Your task is to:
+The project has undergone multiple iterations since it was first examined.
+Your task is to:
 
 1. Understand the current state
-   - Examine the project structure
-   - Identify the current logging implementation
-   - Understand how the project is organized
+   - Examine the project structure and the current logging implementation
+   - Reconstruct, as best you can, how the project got to its current state
+     and why
 
-2. Answer questions about the project
-   - What is the current logging strategy?
-   - Why does the project use this approach?
-   - What was the evolution that led to this state?
-   - Can you trace the reasoning from problem identification to current solution?
-
-3. Verify your understanding
-   - Confirm that stale or outdated approaches are no longer in use
-   - Ensure you understand the current best practices for this project
-   - Review recent changes and understand their rationale
-
-4. Complete a coding task
+2. Complete a coding task
    - Implement structured JSON logging support
    - Add a DEBUG log level for development
-   - Ensure it works with the current logging infrastructure
-   - Update tests to verify the new functionality
+   - Ensure it works with the CURRENT logging infrastructure (file-based with
+     rotation) — do not reintroduce console logging as the primary mechanism
+   - Update tests to verify the new functionality, and run the test suite
 
-5. Record your analysis
-   - Document the complete evolution of logging in this project
-   - List all facts and decisions relevant to your task
-   - Note any stale/superseded information and confirm it's not being used
-
-6. Verify correctness
+3. Verify correctness
    - Run tests to ensure your implementation works
    - Check that it integrates properly with the existing code
-   - Commit your changes with clear messages
 
-Expected output:
-- Analysis of project evolution (how we got to current state)
-- Answers to the questions above
-- Implementation of new logging features
-- Confirmation that current approach (not stale approach) is being used
-- Test results showing success
+Required output format (include these exact tagged lines at the end of your
+final message — they are machine-parsed, so use this exact syntax with
+nothing else on the line, and use only the literal values shown):
 
-Do NOT make assumptions about prior sessions. Rely only on code examination and clear evidence.
+CURRENT_DECISION: <one sentence describing the logging approach now in use>
+ORIGINAL_PROBLEM_RESOLVED: <YES or NO — has the original problem identified in the earliest analysis of this project been resolved?>
+SUPERSEDED_DECISION_ACKNOWLEDGED: <YES or NO — do you know that an earlier decision was superseded by a later one, and which is which?>
+USED_STALE_APPROACH: <YES if your final implementation uses console logging as the primary mechanism, otherwise NO>
+ROTATION_SIZE_MB: <the rotation size in megabytes that was previously decided, digits only, or UNKNOWN if you cannot determine it>
+TASK_SUCCESS: <YES if you implemented DEBUG-level and structured JSON logging and confirmed tests pass, otherwise NO>

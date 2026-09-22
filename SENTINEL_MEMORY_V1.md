@@ -1,147 +1,177 @@
 # Memory Agent Sentinel V1
 
-Vendor-neutral reproducible benchmark for persistent memory/context systems used by autonomous coding agents.
+Vendor-neutral reproducible benchmark for persistent memory/context systems
+used by autonomous coding agents.
 
 ## Overview
 
-This benchmark measures how well autonomous agents can retain, recall, and correctly use contextual information across multiple independent sessions. It focuses on real-world scenarios where an agent must:
+This benchmark measures how well autonomous agents can retain, recall, and
+correctly use contextual information across multiple independent process
+invocations ("sessions"). It focuses on real-world scenarios where an agent
+must:
 
 1. Capture context from exploratory work
 2. Build up understanding across multiple sessions
 3. Supersede stale information with fresh updates
 4. Connect multiple pieces of information to solve tasks
 5. Correctly attribute knowledge to specific project contexts
+6. Keep unrelated projects' context from bleeding into each other
 
 ## Test Scenarios
 
-### SESSION_A: Initial Exploration
-- Inspect fixture project structure
-- Make one small change to codebase
-- Establish several facts about the project (architecture, dependencies, structure)
-- **Establish decision X**: A key architectural or design decision (e.g., "use feature flags for rollout")
-- Document this session's context
+Each of SESSION_A/B/C is a genuinely independent `claude -p` process
+invocation (no shared conversation, no `--resume`) against a deterministic,
+harness-evolved fixture (`fixtures/project-sample/`, see FIXTURES.md).
 
-### SESSION_B: Update and Evolution  
-- Start from a clean agent session (no external context)
-- Update decision X → Y (e.g., "rollout complete, remove feature flags")
-- Establish additional facts/observations
-- Make another small change to codebase
-- Verify that old information (X) no longer interferes with new decision (Y)
+### SESSION_A: Initial Exploration
+- Inspect the fixture project (no code changes)
+- Identify a specific, technical performance concern in the logging middleware
+- State `DECISION_X` and `FACTS_ESTABLISHED` (exact-phrase protocol; see
+  `prompts/PROMPTS.md`)
+
+### SESSION_B: Update and Evolution
+- Independent process; the fixture has deterministically evolved (a new
+  `ISSUES.md` entry, harness-authored, identical for every candidate)
+- Implement file-based logging with rotation; choose and justify a specific
+  rotation size in MB — this number is the one and only place that fact
+  exists outside whatever memory system is under test
+- State `DECISION_Y`, `SUPERSEDES`, `ROTATION_SIZE_MB`, `STALE_CONFIRMED`
 
 ### SESSION_C: Synthesis and Task Completion
-- Start clean again
-- Answer questions requiring facts from both A and B
-- Use Y (not stale X) in reasoning
-- Perform a small coding task that depends on correct recalled context
-- Verify multi-hop recall and absence of stale information
+- Independent process; the fixture has deterministically evolved again to
+  the canonical Decision-Y implementation, including a deliberately
+  "tempting but wrong" stale comment suggesting a revert to console logging
+- Recall the exact rotation size decided in SESSION_B (not derivable from
+  any file)
+- Confirm the SESSION_A problem is resolved (multi-hop: needs both A and B)
+- Implement DEBUG-level + structured JSON logging without reverting to the
+  stale approach
+- State the full required tag set (see `prompts/session-c.txt`)
+
+### ISOLATION_PROBE
+- A separate, independent process against a second, unrelated fixture
+  (`fixtures/project-isolation-b/`) with deliberately confusable-but-distinct
+  facts, run with the same candidate/memory store as the main sessions
+- Verifies neither project's facts leak into the other's context
 
 ## Success Gates (GATES)
 
+All nine gates are fail-closed: a missing or unparsable measurement produces
+`FAIL` or `INCOMPLETE`, never `PASS` (see `scoring/gates.ts`).
+
 | Gate | Measurement | Success Criteria |
 |------|------------|------------------|
-| S0_BASELINE_NO_MEMORY | Agent without external memory | Baseline for comparison |
-| S1_SESSION_CAPTURE | Agent captures and stores context | Facts recorded accurately |
-| S2_CROSS_SESSION_RECALL | Agent recalls facts across sessions | Facts available in new session |
-| S3_STALE_SUPERSESSION | Agent correctly supersedes old info | Y used, X not used |
-| S4_MULTI_HOP_RECALL | Agent connects A+B facts | Multi-hop reasoning succeeds |
-| S5_PROVENANCE_BINDING | Agent tracks context origin | Facts correctly attributed |
-| S6_PROJECT_ISOLATION | Multiple projects don't interfere | Context stays in correct scope |
-| S7_RESTART_PERSISTENCE | Context survives agent restart | Facts persist through restart |
-| S8_CONTEXT_DEPENDENT_CODING_TASK | Agent codes using correct context | Task completed with Y, not X |
+| S0_BASELINE_NO_MEMORY | Structural marker | Records which comparison point this run represents |
+| S1_SESSION_CAPTURE | SESSION_A output | `FACTS_ESTABLISHED` ≥ threshold and `DECISION_X` present |
+| S2_CROSS_SESSION_RECALL | SESSION_C vs SESSION_B | The SESSION_B-decided rotation size is recalled exactly in SESSION_C |
+| S3_STALE_SUPERSESSION | Self-report + static code check | SESSION_C does not use console logging as the primary sink (independently verified, not just self-reported) |
+| S4_MULTI_HOP_RECALL | S2 + `ORIGINAL_PROBLEM_RESOLVED` | Both the SESSION_B fact and the SESSION_A-rooted judgment succeed together |
+| S5_PROVENANCE_BINDING | `SUPERSEDED_DECISION_ACKNOWLEDGED` | SESSION_C explicitly acknowledges which decision superseded which |
+| S6_PROJECT_ISOLATION | Isolation probe, self-report + keyword scan | No terms from the other fixture appear in either project's session output |
+| S7_RESTART_PERSISTENCE | Distinct `session_id`s + S2 | Sessions are confirmed-independent processes AND recall still succeeded |
+| S8_CONTEXT_DEPENDENT_CODING_TASK | Self-report + `tsc --noEmit` + `jest` | All signals agree the coding task was actually completed correctly |
 
 ## Metrics
 
-### Correctness Metrics
-- **TASK_SUCCESS**: Binary - did the agent complete the required task?
-- **CORRECT_RECALL**: Count - facts correctly recalled
-- **STALE_RECALL**: Count - outdated facts incorrectly used
-- **FALSE_RECALL**: Count - facts not established but claimed
-- **PROVENANCE_CORRECT**: Count - facts with correct origin attribution
-- **MULTIHOP_SUCCESS**: Binary - multi-hop reasoning successful?
-- **PROJECT_ISOLATION**: Binary - contexts properly isolated?
-- **RESTART_PERSISTENCE**: Binary - context survived restart?
+- **Resources**: `FILES_READ`, `GREP_CALLS` — real counts parsed from
+  `tool_use` events in the session transcript
+- **Telemetry**: `TOKEN_TELEMETRY` (input/output/cache tokens, cost, turns,
+  duration) taken verbatim from the `claude` CLI's own reported usage. A
+  field the CLI does not expose is `"UNAVAILABLE"`, never `0`.
+- **MANUAL_INTERVENTIONS**: fixed at `0` — a measured run has none by
+  definition (`HUMAN_MIDDLEWARE=0` constraint below)
 
-### Resource Metrics
-- **TOKENS_INPUT**: Total input tokens used
-- **FILES_READ**: Count of files read
-- **GREP_CALLS**: Count of grep/search operations
-- **TIME_TO_USEFUL_CONTEXT**: Seconds until agent has sufficient context for task
-- **MANUAL_INTERVENTION**: Count of times human had to help
+## Baselines / Candidates
 
-## Baselines
+Candidates are a pluggable adapter interface (`runner/adapters/`), not a
+fixed list:
 
-Three comparison points:
-
-- **A: No External Memory** - Agent with only in-session context (LLM context window only)
-- **B: Existing ai-memory** - Agent using current ai-memory system
-- **C: System Under Test** - Future/candidate memory system (tested later)
+- **no-memory** — `runner/adapters/no-memory.ts` — no MCP memory server registered
+- **ai-memory** — `runner/adapters/ai-memory.ts` — ai-memory hooks + MCP server,
+  isolated `--data-dir` per run
+- any future candidate (e.g. Hindsight) — implement `Adapter` and register it;
+  `runner/adapters/future-candidate.ts` is an explicit `NOT_IMPLEMENTED` stub,
+  not a silent fallback
 
 ## Result Format
 
-Per-gate results include:
-- PASS/FAIL status
-- Raw measurements (counts, durations)
-- Machine-readable JSON (RESULT_SCHEMA.json)
-- No subjective winner declarations
-- No weighted overall scoring
+Machine-readable JSON validated against `RESULT_SCHEMA.json` before it is
+ever written to disk (`additionalProperties: false`, all 9 gates and
+`session_logs` required, `provenance` binds `benchmark_commit_sha` +
+`fixture_sha256`). No subjective winner declarations. No weighted overall
+scoring.
 
 ## Constraints
 
-- **HUMAN_MIDDLEWARE=0** during measured runs (except baseline setup)
-- No manual handoff of context between agents
+- `HUMAN_MIDDLEWARE=0` during measured runs (enforced structurally: the
+  runner never pauses for human input mid-session; `MANUAL_INTERVENTIONS`
+  is schema-fixed at `0`)
+- No manual handoff of context between sessions — each session is an
+  independent `claude -p` process
 - Synthetic deterministic fixtures only (no private data)
 - All secrets/credentials excluded from repo
-- Runtime target ≤45 minutes per candidate
+- Grading is deterministic pattern-matching against an exact-phrase tag
+  protocol (see `prompts/PROMPTS.md`), not an LLM judge — a documented
+  tradeoff, not an oversight
 
 ## Project Structure
 
 ```
 .
 ├── SENTINEL_MEMORY_V1.md          (this file)
-├── RESULT_SCHEMA.json             (JSON schema for results)
+├── RESULT_SCHEMA.json             (strict JSON schema for results)
 ├── BASELINE_RUNBOOK.md            (how to run baseline measurements)
 ├── fixtures/
-│   ├── project-a/                 (sample Node.js + TS project)
-│   ├── project-b/                 (alternative fixture)
+│   ├── project-sample/            (base/ + deterministic session overlays)
+│   ├── project-isolation-b/       (second, independent fixture for S6)
 │   └── FIXTURES.md                (fixture documentation)
 ├── prompts/
-│   ├── session-a.txt              (SESSION_A instructions)
-│   ├── session-b.txt              (SESSION_B instructions)
-│   ├── session-c.txt              (SESSION_C instructions)
-│   └── PROMPTS.md                 (prompt design notes)
+│   ├── session-a.txt / session-b.txt / session-c.txt
+│   ├── isolation-probe.txt
+│   └── PROMPTS.md                 (prompt design + grading protocol)
 ├── runner/
-│   ├── runner.ts                  (test harness)
-│   ├── session.ts                 (session abstraction)
-│   └── config.ts                  (configuration)
+│   ├── runner.ts                  (CLI entrypoint)
+│   ├── session-runner.ts          (orchestrates A/B/C + isolation probe)
+│   ├── fixture-evolution.ts       (deterministic overlay application)
+│   ├── grading.ts                 (exact-phrase tag extraction)
+│   ├── verify-coding-task.ts      (independent static verification for S8)
+│   ├── provenance.ts              (commit SHA + fixture SHA-256 binding)
+│   ├── config.ts
+│   └── adapters/                  (no-memory, ai-memory, future-candidate, shared CLI driver)
 ├── scoring/
-│   ├── gates.ts                   (gate evaluation logic)
-│   ├── metrics.ts                 (metric calculation)
-│   └── schema.ts                  (result type definitions)
+│   ├── gates.ts                   (fail-closed gate evaluation)
+│   ├── metrics.ts                 (real telemetry aggregation)
+│   └── schema.ts                  (TS types + ajv-backed schema validation)
+├── tests/                         (jest: gates, grading, schema, fixtures)
 ├── results/
-│   └── .gitkeep                   (results directory, git-tracked as empty)
+│   └── .gitkeep
 └── package.json
 ```
 
 ## Running the Benchmark
 
-See BASELINE_RUNBOOK.md for detailed instructions.
+See BASELINE_RUNBOOK.md. Quick start:
 
-Quick start:
 ```bash
 npm install
-npm run baseline:no-memory
-npm run baseline:ai-memory
+npm run setup:fixtures     # no API calls
+npm run baseline:no-memory # real API calls
+npm run baseline:ai-memory # real API calls, requires ai-memory
 ```
 
 Results are saved to `results/` as JSON.
 
 ## Validation Checklist
 
-- [ ] Static TypeScript validation passes
-- [ ] Fixture projects have deterministic structure
-- [ ] Prompts are reproducible
-- [ ] Runner can execute without external memory product installed
-- [ ] Baseline runs complete in <45 minutes
-- [ ] Result schema valid against RESULT_SCHEMA.json
-- [ ] No secrets/credentials in repo
-- [ ] Git history clean (no test artifacts)
+- [x] Static TypeScript validation passes (`npm run lint`)
+- [x] Fixture projects have deterministic structure (`npm run setup:fixtures`,
+      also asserted in `tests/fixtures.test.ts`)
+- [x] A second, independent isolation fixture exists and is exercised every run
+- [x] Runner can execute a real end-to-end no-memory baseline without any
+      external memory product installed
+- [x] Result schema rejects an intentionally incomplete result
+      (`tests/schema.test.ts`)
+- [x] No secrets/credentials in repo
+- [ ] Baseline runs complete in a bounded time — not asserted as a hard
+      requirement; depends on model/timeout configuration and is reported in
+      `metrics.TOTAL_DURATION_SECONDS`, not enforced as a pass/fail gate

@@ -1,124 +1,249 @@
+// Fail-closed gate evaluation.
+//
+// Hard rule: a missing, unparsable, or not-yet-collected measurement must
+// NEVER be treated as a passing signal. Every gate below only returns PASS
+// when every measurement it depends on is explicitly present and correct.
+// There is no `x !== false` or `x || default` pattern anywhere in this file
+// — those are exactly the constructs that made the previous version of this
+// file fail-open (a missing metric silently defaulted to a passing value).
+
+export type Maybe<T> = T | 'MISSING';
+
+export function present<T>(v: Maybe<T>): v is T {
+  return v !== 'MISSING';
+}
+
+function isTrue(v: Maybe<boolean>): boolean {
+  return present(v) && v === true;
+}
+
+function isFalse(v: Maybe<boolean>): boolean {
+  return present(v) && v === false;
+}
+
+export interface GateInputs {
+  sessionA: {
+    ranSuccessfully: boolean;
+    factsEstablished: Maybe<number>;
+    decisionX: Maybe<string>;
+    minFactsRequired: number;
+  };
+  sessionB: {
+    ranSuccessfully: boolean;
+    decisionY: Maybe<string>;
+    staleConfirmedBySelfReport: Maybe<boolean>;
+    rotationSizeMb: Maybe<number>;
+  };
+  sessionC: {
+    ranSuccessfully: boolean;
+    currentDecision: Maybe<string>;
+    originalProblemResolved: Maybe<boolean>;
+    supersededAcknowledged: Maybe<boolean>;
+    usedStaleApproachSelfReport: Maybe<boolean>;
+    rotationSizeMb: Maybe<number>;
+    taskSuccessSelfReport: Maybe<boolean>;
+  };
+  staticVerification: {
+    ran: boolean;
+    typecheckPassed: Maybe<boolean>;
+    logsToConsoleAsPrimarySink: Maybe<boolean>;
+    hasDebugLevelSupport: Maybe<boolean>;
+    hasJsonStructuredLogging: Maybe<boolean>;
+    testsPassed: Maybe<boolean>;
+  };
+  sessionIdsDistinct: Maybe<boolean>;
+  isolationProbe: {
+    ran: boolean;
+    leakDetectedBySelfReport: Maybe<boolean>;
+    leakDetectedByKeywordScan: Maybe<boolean>;
+  };
+}
+
 export interface GateResult {
-  status: 'PASS' | 'FAIL' | 'SKIP';
+  status: 'PASS' | 'FAIL' | 'INCOMPLETE';
   details: string;
-  measurements?: Record<string, number | string | boolean>;
+  measurements: Record<string, number | string | boolean>;
 }
 
 export interface GateEvaluation {
   [key: string]: GateResult;
 }
 
+function fail(details: string, measurements: Record<string, number | string | boolean> = {}): GateResult {
+  return { status: 'FAIL', details, measurements };
+}
+
+function incomplete(details: string, measurements: Record<string, number | string | boolean> = {}): GateResult {
+  return { status: 'INCOMPLETE', details, measurements };
+}
+
+function pass(details: string, measurements: Record<string, number | string | boolean> = {}): GateResult {
+  return { status: 'PASS', details, measurements };
+}
+
 export class GateEvaluator {
-  evaluateS0(baseline: boolean): GateResult {
+  evaluateS0(candidate: string): GateResult {
+    // Structural marker, not a pass/fail measurement of the candidate: it
+    // records which comparison point this run represents.
+    return pass(`Run recorded as comparison point: ${candidate}`, { candidate });
+  }
+
+  evaluateS1SessionCapture(input: GateInputs['sessionA']): GateResult {
+    if (!input.ranSuccessfully) {
+      return incomplete('SESSION_A did not complete successfully; no capture data available.');
+    }
+    if (!present(input.factsEstablished) || !present(input.decisionX)) {
+      return fail('SESSION_A output is missing required FACTS_ESTABLISHED and/or DECISION_X tags.', {
+        factsEstablished: present(input.factsEstablished) ? input.factsEstablished : 'MISSING',
+        decisionX: present(input.decisionX) ? input.decisionX : 'MISSING',
+      });
+    }
+    if (input.decisionX.trim().length === 0) {
+      return fail('DECISION_X tag was present but empty.');
+    }
+    const status = input.factsEstablished >= input.minFactsRequired;
     return {
-      status: 'PASS',
-      details: 'Baseline established for comparison',
-      measurements: { baseline },
+      status: status ? 'PASS' : 'FAIL',
+      details: `SESSION_A captured ${input.factsEstablished} facts (minimum required: ${input.minFactsRequired}).`,
+      measurements: { factsEstablished: input.factsEstablished, minFactsRequired: input.minFactsRequired },
     };
   }
 
-  evaluateS1SessionCapture(factsEstablished: number, factsAccurate: boolean): GateResult {
-    const status = factsEstablished > 3 && factsAccurate ? 'PASS' : 'FAIL';
+  evaluateS2CrossSessionRecall(sessionB: GateInputs['sessionB'], sessionC: GateInputs['sessionC']): GateResult {
+    if (!present(sessionB.rotationSizeMb)) {
+      return fail('SESSION_B never recorded a ROTATION_SIZE_MB value; there is no ground truth to recall.');
+    }
+    if (!present(sessionC.rotationSizeMb)) {
+      return fail('SESSION_C did not recall a ROTATION_SIZE_MB value (missing or UNKNOWN).');
+    }
+    const match = sessionB.rotationSizeMb === sessionC.rotationSizeMb;
     return {
-      status,
-      details: `Session A captured ${factsEstablished} facts accurately`,
-      measurements: { factsEstablished, factsAccurate },
+      status: match ? 'PASS' : 'FAIL',
+      details: match
+        ? `SESSION_C correctly recalled the rotation size decided in SESSION_B (${sessionB.rotationSizeMb} MB).`
+        : `SESSION_C reported ${sessionC.rotationSizeMb} MB, but SESSION_B had decided ${sessionB.rotationSizeMb} MB.`,
+      measurements: { decidedInSessionB: sessionB.rotationSizeMb, recalledInSessionC: sessionC.rotationSizeMb },
     };
   }
 
-  evaluateS2CrossSessionRecall(factsRecalled: number, totalFacts: number): GateResult {
-    const recallRate = factsRecalled / totalFacts;
-    const status = recallRate >= 0.75 ? 'PASS' : 'FAIL';
+  evaluateS3StaleSuperSession(
+    sessionB: GateInputs['sessionB'],
+    sessionC: GateInputs['sessionC'],
+    staticVerification: GateInputs['staticVerification']
+  ): GateResult {
+    const missing: string[] = [];
+    if (!present(sessionB.staleConfirmedBySelfReport)) missing.push('SESSION_B STALE_CONFIRMED');
+    if (!present(sessionC.usedStaleApproachSelfReport)) missing.push('SESSION_C USED_STALE_APPROACH');
+    if (!present(staticVerification.logsToConsoleAsPrimarySink)) missing.push('static verification of logging sink');
+    if (missing.length > 0) {
+      return fail(`Cannot evaluate stale supersession: missing ${missing.join(', ')}.`);
+    }
+    const bConfirmedStale = isTrue(sessionB.staleConfirmedBySelfReport);
+    const selfReportedNoStaleUse = isFalse(sessionC.usedStaleApproachSelfReport);
+    const staticallyClean = isFalse(staticVerification.logsToConsoleAsPrimarySink);
+    const status = bConfirmedStale && selfReportedNoStaleUse && staticallyClean;
     return {
-      status,
-      details: `Session B recalled ${factsRecalled}/${totalFacts} facts (${(recallRate * 100).toFixed(1)}%)`,
-      measurements: { factsRecalled, recallRate },
+      status: status ? 'PASS' : 'FAIL',
+      details: `SESSION_B confirmed staleness: ${bConfirmedStale}; SESSION_C self-reported no stale use: ${selfReportedNoStaleUse}; static check confirms console logging is not the primary sink: ${staticallyClean}.`,
+      measurements: { bConfirmedStale, selfReportedNoStaleUse, staticallyClean },
     };
   }
 
-  evaluateS3StaleSuperSession(usedCurrentDecision: boolean, usedStaleDecision: boolean): GateResult {
-    const status = usedCurrentDecision && !usedStaleDecision ? 'PASS' : 'FAIL';
+  evaluateS4MultiHopRecall(s2: GateResult, sessionC: GateInputs['sessionC']): GateResult {
+    if (!present(sessionC.originalProblemResolved)) {
+      return fail('SESSION_C did not report ORIGINAL_PROBLEM_RESOLVED.');
+    }
+    const hop1 = s2.status === 'PASS';
+    const hop2 = isTrue(sessionC.originalProblemResolved);
+    const status = hop1 && hop2;
     return {
-      status,
-      details: `Session C used current decision: ${usedCurrentDecision}, used stale: ${usedStaleDecision}`,
-      measurements: { usedCurrentDecision, usedStaleDecision },
+      status: status ? 'PASS' : 'FAIL',
+      details: `Multi-hop recall requires both hops to succeed: cross-session numeric recall (${hop1 ? 'ok' : 'failed'}) and acknowledgement that the SESSION_A problem was resolved (${hop2 ? 'yes' : 'no/missing'}).`,
+      measurements: { hop1CrossSessionRecall: hop1, hop2OriginalProblemResolved: hop2 },
     };
   }
 
-  evaluateS4MultiHopRecall(successfulConnections: number, totalConnections: number): GateResult {
-    const rate = successfulConnections / totalConnections;
-    const status = rate >= 0.8 ? 'PASS' : 'FAIL';
+  evaluateS5ProvenanceBinding(sessionC: GateInputs['sessionC']): GateResult {
+    if (!present(sessionC.supersededAcknowledged) || !present(sessionC.currentDecision)) {
+      return fail('SESSION_C is missing SUPERSEDED_DECISION_ACKNOWLEDGED and/or CURRENT_DECISION.');
+    }
+    const status = isTrue(sessionC.supersededAcknowledged) && sessionC.currentDecision.trim().length > 0;
     return {
-      status,
-      details: `Multi-hop recall: ${successfulConnections}/${totalConnections} connections`,
-      measurements: { successfulConnections, rate },
+      status: status ? 'PASS' : 'FAIL',
+      details: `SESSION_C acknowledged the decision supersession chain: ${isTrue(sessionC.supersededAcknowledged)}.`,
+      measurements: { supersededAcknowledged: isTrue(sessionC.supersededAcknowledged) },
     };
   }
 
-  evaluateS5ProvenanceBinding(correctAttributions: number, totalFacts: number): GateResult {
-    const rate = correctAttributions / totalFacts;
-    const status = rate >= 0.9 ? 'PASS' : 'FAIL';
+  evaluateS6ProjectIsolation(probe: GateInputs['isolationProbe']): GateResult {
+    if (!probe.ran) {
+      return incomplete('Isolation probe session did not run.');
+    }
+    if (!present(probe.leakDetectedBySelfReport) || !present(probe.leakDetectedByKeywordScan)) {
+      return fail('Isolation probe ran but leak-detection measurements are missing.');
+    }
+    const selfReportClean = isFalse(probe.leakDetectedBySelfReport);
+    const keywordScanClean = isFalse(probe.leakDetectedByKeywordScan);
+    const status = selfReportClean && keywordScanClean;
     return {
-      status,
-      details: `Provenance binding: ${correctAttributions}/${totalFacts} facts correctly attributed`,
-      measurements: { correctAttributions, rate },
+      status: status ? 'PASS' : 'FAIL',
+      details: `Isolation probe self-report clean: ${selfReportClean}; independent keyword-leak scan clean: ${keywordScanClean}.`,
+      measurements: { selfReportClean, keywordScanClean },
     };
   }
 
-  evaluateS6ProjectIsolation(isolated: boolean): GateResult {
+  evaluateS7RestartPersistence(sessionIdsDistinct: Maybe<boolean>, s2: GateResult): GateResult {
+    if (!present(sessionIdsDistinct)) {
+      return incomplete('Could not confirm session_id values from the CLI to prove independent process restarts.');
+    }
+    if (!sessionIdsDistinct) {
+      return fail('SESSION_A/B/C did not run as independent processes (identical session_id detected) — restart was not real.');
+    }
+    const status = s2.status === 'PASS';
     return {
-      status: isolated ? 'PASS' : 'FAIL',
-      details: `Project contexts properly isolated: ${isolated}`,
-      measurements: { isolated },
+      status: status ? 'PASS' : 'FAIL',
+      details: `Sessions ran as confirmed-independent processes (distinct session_id per session). Persistence is evidenced by ${status ? 'successful' : 'failed'} cross-session recall (S2).`,
+      measurements: { sessionIdsDistinct, recallSucceeded: status },
     };
   }
 
-  evaluateS7RestartPersistence(survived: boolean): GateResult {
+  evaluateS8ContextDependentTask(sessionC: GateInputs['sessionC'], staticVerification: GateInputs['staticVerification']): GateResult {
+    if (!staticVerification.ran) {
+      return incomplete('Static verification (typecheck/tests/log-format checks) did not run.');
+    }
+    const requiredFields: Array<[string, Maybe<boolean>]> = [
+      ['SESSION_C TASK_SUCCESS self-report', sessionC.taskSuccessSelfReport],
+      ['typecheck', staticVerification.typecheckPassed],
+      ['DEBUG level support', staticVerification.hasDebugLevelSupport],
+      ['structured JSON logging', staticVerification.hasJsonStructuredLogging],
+      ['tests passed', staticVerification.testsPassed],
+    ];
+    const missing = requiredFields.filter(([, v]) => !present(v)).map(([name]) => name);
+    if (missing.length > 0) {
+      return fail(`Missing required verification signal(s): ${missing.join(', ')}.`);
+    }
+    const allTrue = requiredFields.every(([, v]) => isTrue(v));
     return {
-      status: survived ? 'PASS' : 'FAIL',
-      details: `Context survived restart: ${survived}`,
-      measurements: { survived },
+      status: allTrue ? 'PASS' : 'FAIL',
+      details: `Coding task gate requires self-report AND independent static verification to all agree. Result: ${JSON.stringify(
+        Object.fromEntries(requiredFields.map(([name, v]) => [name, isTrue(v)]))
+      )}`,
+      measurements: Object.fromEntries(requiredFields.map(([name, v]) => [name, isTrue(v)])),
     };
   }
 
-  evaluateS8ContextDependentTask(taskCompleted: boolean, correctContext: boolean): GateResult {
-    const status = taskCompleted && correctContext ? 'PASS' : 'FAIL';
+  evaluateAll(candidate: string, inputs: GateInputs): GateEvaluation {
+    const s2 = this.evaluateS2CrossSessionRecall(inputs.sessionB, inputs.sessionC);
     return {
-      status,
-      details: `Coding task completed: ${taskCompleted}, used correct context: ${correctContext}`,
-      measurements: { taskCompleted, correctContext },
-    };
-  }
-
-  evaluateAll(metrics: Record<string, any>): GateEvaluation {
-    return {
-      S0_BASELINE_NO_MEMORY: this.evaluateS0(true),
-      S1_SESSION_CAPTURE: this.evaluateS1SessionCapture(
-        metrics.factsEstablished || 0,
-        metrics.factsAccurate !== false
-      ),
-      S2_CROSS_SESSION_RECALL: this.evaluateS2CrossSessionRecall(
-        metrics.factsRecalled || 0,
-        metrics.totalFacts || 5
-      ),
-      S3_STALE_SUPERSESSION: this.evaluateS3StaleSuperSession(
-        metrics.usedCurrentDecision !== false,
-        metrics.usedStaleDecision === true
-      ),
-      S4_MULTI_HOP_RECALL: this.evaluateS4MultiHopRecall(
-        metrics.multiHopSuccesses || 0,
-        metrics.multiHopAttempts || 1
-      ),
-      S5_PROVENANCE_BINDING: this.evaluateS5ProvenanceBinding(
-        metrics.correctAttributions || 0,
-        metrics.totalFacts || 5
-      ),
-      S6_PROJECT_ISOLATION: this.evaluateS6ProjectIsolation(metrics.isolated !== false),
-      S7_RESTART_PERSISTENCE: this.evaluateS7RestartPersistence(metrics.contextSurvived !== false),
-      S8_CONTEXT_DEPENDENT_CODING_TASK: this.evaluateS8ContextDependentTask(
-        metrics.taskCompleted !== false,
-        metrics.usedCorrectContext !== false
-      ),
+      S0_BASELINE_NO_MEMORY: this.evaluateS0(candidate),
+      S1_SESSION_CAPTURE: this.evaluateS1SessionCapture(inputs.sessionA),
+      S2_CROSS_SESSION_RECALL: s2,
+      S3_STALE_SUPERSESSION: this.evaluateS3StaleSuperSession(inputs.sessionB, inputs.sessionC, inputs.staticVerification),
+      S4_MULTI_HOP_RECALL: this.evaluateS4MultiHopRecall(s2, inputs.sessionC),
+      S5_PROVENANCE_BINDING: this.evaluateS5ProvenanceBinding(inputs.sessionC),
+      S6_PROJECT_ISOLATION: this.evaluateS6ProjectIsolation(inputs.isolationProbe),
+      S7_RESTART_PERSISTENCE: this.evaluateS7RestartPersistence(inputs.sessionIdsDistinct, s2),
+      S8_CONTEXT_DEPENDENT_CODING_TASK: this.evaluateS8ContextDependentTask(inputs.sessionC, inputs.staticVerification),
     };
   }
 }

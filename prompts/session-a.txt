@@ -1,6 +1,9 @@
 SESSION A: INITIAL EXPLORATION
 
-You are an autonomous code agent. You have been given a small project to explore and analyze.
+You are an autonomous code agent working in this project's directory. Use
+whatever tools and context are genuinely available to you (file reading,
+search, and any memory/context system you have access to). Do not assume
+anything you have not verified.
 
 Your task is to:
 
@@ -21,23 +24,27 @@ Your task is to:
 
 4. Identify a problem or inefficiency
    - Look at the logging implementation in middleware/logger.ts
-   - Consider how this logging behaves in different environments
-   - Identify any performance or operational concerns
+   - Consider how this logging behaves in different environments, especially
+     under production request volume
+   - Identify a specific, technical performance or operational concern (not
+     just "logging is bad" — say precisely what could go wrong and why)
 
 5. Establish a decision
-   - Based on your analysis, identify a key decision that should be made
+   - Based on your analysis, identify a key decision that should be made to
+     address the concern
    - Document this decision for future reference
-   - Consider the tradeoffs involved
-
-6. Record your findings
-   - Write a summary of the project
-   - List the key facts you discovered
-   - Clearly state the decision you've identified
 
 Do NOT make changes to the code yet. Just analyze and document your findings.
 
-Expected output:
-- Project summary (5-10 sentences)
-- Architecture overview
-- Key technical facts
-- The identified decision (framed as a problem + proposed solution)
+Required output format (include these exact tagged lines at the end of your
+final message — they are machine-parsed, so use this exact syntax with
+nothing else on the line):
+
+DECISION_X: <one sentence stating the specific problem and the proposed direction>
+FACTS_ESTABLISHED: <integer — count of distinct factual statements you found about the project>
+
+These tags are load-bearing: a later, independent session will be asked to
+recall and build on what you record here, without being shown this
+transcript directly. Only what you actually store (via files you write, or
+via any memory/context system you have access to) can be recovered later —
+so be precise and do not omit the reasoning behind DECISION_X.

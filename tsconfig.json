@@ -14,6 +14,6 @@
     "sourceMap": true,
     "types": ["jest", "node"]
   },
-  "include": ["runner/**/*.ts", "scoring/**/*.ts"],
+  "include": ["runner/**/*.ts", "scoring/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules", "dist", "fixtures"]
 }

@@ -1,17 +1,21 @@
 export interface BenchmarkConfig {
   fixture: string;
-  fixturePath: string;
+  fixtureDir: string;
+  isolationFixtureDir: string;
   sessionTimeoutSeconds: number;
-  maxTokensPerSession: number;
+  model: string;
   candidates: string[];
+  minFactsRequired: number;
 }
 
 export const defaultConfig: BenchmarkConfig = {
   fixture: 'project-sample',
-  fixturePath: './fixtures/project-sample',
-  sessionTimeoutSeconds: 600, // 10 minutes
-  maxTokensPerSession: 100000,
+  fixtureDir: './fixtures/project-sample',
+  isolationFixtureDir: './fixtures/project-isolation-b',
+  sessionTimeoutSeconds: 600,
+  model: 'sonnet',
   candidates: ['no-memory', 'ai-memory'],
+  minFactsRequired: 3,
 };
 
 export function getConfig(overrides?: Partial<BenchmarkConfig>): BenchmarkConfig {
